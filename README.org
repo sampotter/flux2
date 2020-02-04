@@ -1,0 +1,22 @@
+* flux
+
+  The goal of this project is to slowly start to consolidate and
+  finalize a variety of things I've been working on for PSI and NASA
+  related to applying hierarchical matrix algorithms to thermal and
+  illumination modeling.
+
+  More details will appear here as I start to flesh this project
+  out. Right now, the existing code is spread across a few other of my
+  respositories (specifically, [[https://github.com/sampotter/flux][flux]] and [[https://github.com/sampotter/psi-radiosity-notebooks][psi-radiosity-notebooks)]]. The
+  code in these other repositories is in a prototype state at the
+  moment.
+
+** Compilation
+
+   This is a C++ project with tight Python bindings developed using
+   [[https://pybind11.readthedocs.io][pybind11]]. To compile the Python module and install it, do something
+   like this:
+
+#+BEGIN_SRC sh
+$ pip install .
+#+END_SRC
