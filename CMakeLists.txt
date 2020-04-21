@@ -1,13 +1,16 @@
-project (flux)
-
 cmake_minimum_required (VERSION 3.10)
+
+project (flux VERSION 0.1.0 LANGUAGES CXX)
 
 set (CMAKE_CXX_STANDARD 17)
 
 include (GoogleTest)
 
+list (APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
 find_package (Eigen3 REQUIRED NO_MODULE)
 find_package (pybind11 REQUIRED)
+find_package (TBB REQUIRED)
 
 set (CMAKE_CXX_STANDARD_REQUIRED ON)
 set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC -Wall -Wextra -Werror")
