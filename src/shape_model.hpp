@@ -203,14 +203,10 @@ struct ShapeModel
     vec_t lhs(i1 - i0);
     lhs.setConstant(0.0);
 
-    puts("b");
-
     for (size_t iblk = i0; iblk < i1; iblk += di) {
       index_pairs_t ssinds = same_side(iblk, std::min(i1, iblk + di), j0, j1);
 
       size_t nss = ssinds.rows();
-
-      std::cout << "nss = " << nss << std::endl;
 
       // Gather points
       verts_t points(nss, 3);
