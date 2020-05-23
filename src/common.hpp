@@ -2,6 +2,7 @@
 
 #include <experimental/propagate_const>
 #include <iostream>
+#include <memory>
 #include <vector>
 
 #include <Eigen/Dense>
