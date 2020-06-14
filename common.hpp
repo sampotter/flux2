@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <experimental/propagate_const>
 #include <iostream>
 #include <memory>

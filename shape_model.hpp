@@ -148,7 +148,7 @@ struct EmbreeShapeModel: public BaseShapeModel
     init_embree();
   }
 
-  ShapeModel(verts_ref_t verts, tris_ref_t faces, verts_ref_t normals):
+  EmbreeShapeModel(verts_ref_t verts, tris_ref_t faces, verts_ref_t normals):
     BaseShapeModel {verts, faces, normals}
   {
     init_embree();
