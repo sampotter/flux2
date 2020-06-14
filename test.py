@@ -1,4 +1,4 @@
-import sys; sys.path.insert(0, './build/lib.macosx-10.15-x86_64-3.7')
+import sys; sys.path.insert(0, './build/lib.linux-x86_64-3.8')
 
 import embree
 import flux
@@ -15,4 +15,7 @@ shape_model = flux.ShapeModel(verts, faces)
 
 e = lambda n, i: np.eye(n)[i].astype(np.float32)
 
-shape_model.mul_with_ff(0, 1024, 0, 1024, e(1024, 1), 128)
+N = 2**16
+bsize = 2**8
+
+shape_model.mul_with_ff(0, N, 0, N, np.ones(N), bsize)

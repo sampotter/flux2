@@ -7,31 +7,18 @@ RTC_NAMESPACE_OPEN
 
 namespace Flux {
 
-using coef_t = float;
-
-using vec_t = Eigen::Array<coef_t, Eigen::Dynamic, 1>;
-
-using vert_t = Eigen::Matrix<coef_t, 3, 1>;
-
-using verts_t = Eigen::Matrix<coef_t, Eigen::Dynamic, 3, Eigen::RowMajor>;
-using verts_ref_t = Eigen::Ref<verts_t>;
-
-using index_t = int32_t;
-
-constexpr index_t NO_INDEX = -1;
-
-using tris_t = Eigen::Matrix<index_t, Eigen::Dynamic, 3, Eigen::RowMajor>;
-using tris_ref_t = Eigen::Ref<tris_t>;
-
-using indices_t = Eigen::Array<index_t, Eigen::Dynamic, 1>;
-
-using index_pairs_t = Eigen::Matrix<index_t, Eigen::Dynamic, 2, Eigen::RowMajor>;
-
-constexpr float PI = 3.14159265;
-
-struct ShapeModel
+struct BaseShapeModel
 {
-  ShapeModel(verts_ref_t verts, tris_ref_t faces):
+  // Data coming from shape model
+  verts_ref_t verts;
+  tris_ref_t faces;
+
+  // Precomputed geometry
+  verts_t centroids;
+  verts_t normals;
+  vec_t areas;
+
+  BaseShapeModel(verts_ref_t verts, tris_ref_t faces):
     verts {verts},
     faces {faces},
     centroids(num_faces(), 3),
@@ -47,11 +34,9 @@ struct ShapeModel
       normals.row(i) /= areas(i);
       areas(i) /= 2;
     }
-
-    init_embree();
   }
 
-  ShapeModel(verts_ref_t verts, tris_ref_t faces, verts_ref_t normals):
+  BaseShapeModel(verts_ref_t verts, tris_ref_t faces, verts_ref_t normals):
     verts {verts},
     faces {faces},
     centroids(num_faces(), 3),
@@ -64,55 +49,9 @@ struct ShapeModel
       centroids.row(i) = (v0 + v1 + v2)/3;
       areas(i) = (v1 - v0).cross(v2 - v0).norm()/2;
     }
-
-    init_embree();
   }
 
-  void init_embree() {
-    device = rtcNewDevice(NULL);
-    scene = rtcNewScene(device);
-    geometry = rtcNewGeometry(device, RTC_GEOMETRY_TYPE_TRIANGLE);
-
-    // TODO: is there a way to do this without allocating more memory
-    // for these buffers? It would be nice to be able to just pass
-    // pointers to the memory held by verts and faces.
-
-    vertex_buffer = rtcSetNewGeometryBuffer(
-      geometry,               // geometry
-      RTC_BUFFER_TYPE_VERTEX, // type
-      0,                      // slot
-      RTC_FORMAT_FLOAT3,      // format
-      3*sizeof(coef_t),       // byteStride
-      verts.rows()            // itemCount
-      );
-    if (rtcGetDeviceError(device) != RTC_ERROR_NONE) {
-      throw std::runtime_error("error when creating vertex beffer");
-    }
-    memcpy(vertex_buffer, verts.data(), sizeof(coef_t)*verts.size());
-
-    index_buffer = rtcSetNewGeometryBuffer(
-      geometry,              // geometry
-      RTC_BUFFER_TYPE_INDEX, // type
-      0,                     // slot
-      RTC_FORMAT_UINT3,      // format
-      3*sizeof(index_t),     // byteStride,
-      faces.rows()           // itemCount
-      );
-    if (rtcGetDeviceError(device) != RTC_ERROR_NONE) {
-      throw std::runtime_error("error when creating index beffer");
-    }
-    memcpy(index_buffer, faces.data(), sizeof(index_t)*faces.size());
-
-    rtcCommitGeometry(geometry);
-    rtcAttachGeometry(scene, geometry);
-    rtcReleaseGeometry(geometry);
-    rtcCommitScene(scene);
-  }
-
-  ~ShapeModel() {
-    rtcReleaseScene(scene);
-    rtcReleaseDevice(device);
-  }
+  virtual ~BaseShapeModel() {}
 
   inline size_t num_verts() const {
     return verts.rows();
@@ -142,50 +81,7 @@ struct ShapeModel
     return index_pairs;
   }
 
-  /**
-   * Shoot rays from the points in `points` in the direction of
-   * `dirs`. Returns a vector of the indices of each element that was
-   * hit.
-   */
-  indices_t intersect(verts_ref_t const & points, verts_ref_t const & dirs,
-                      float tnear = 1e-5) {
-    size_t i = 0;
-
-    std::vector<RTCRayHit> rayhits(points.rows());
-    for (auto & rayhit: rayhits) {
-      RTCRay & ray = rayhit.ray;
-      ray.org_x = points(i, 0);
-      ray.org_y = points(i, 1);
-      ray.org_z = points(i, 2);
-      ray.tnear = tnear;
-      ray.tfar = std::numeric_limits<coef_t>::infinity();
-      ray.dir_x = dirs(i, 0);
-      ray.dir_y = dirs(i, 1);
-      ray.dir_z = dirs(i, 2);
-      ray.flags = 0;
-      rayhit.hit.geomID = RTC_INVALID_GEOMETRY_ID;
-      ++i;
-    }
-
-    RTCIntersectContext context;
-    rtcIntersect1M(
-      scene,
-      &context,
-      &rayhits[0],
-      rayhits.size(),
-      sizeof(RTCRayHit)
-      );
-
-    i = 0;
-    indices_t inds(points.rows());
-    for (auto const & rayhit: rayhits) {
-      inds[i++] = rayhit.hit.geomID != RTC_INVALID_GEOMETRY_ID ?
-        rayhit.hit.primID :
-        NO_INDEX;
-    }
-
-    return inds;
-  }
+  virtual indices_t intersect(verts_ref_t points, verts_ref_t dirs) = 0;
 
   float ff(size_t i, size_t j) {
     vert_t pij = centroids.row(j) - centroids.row(i);
@@ -235,22 +131,130 @@ struct ShapeModel
 
     return lhs;
   }
+};
 
-  // Data coming from shape model
-  verts_ref_t verts;
-  tris_ref_t faces;
-
-  // Precomputed geometry
-  verts_t centroids;
-  verts_t normals;
-  vec_t areas;
-
+struct EmbreeShapeModel: public BaseShapeModel
+{
   RTCDevice device;
   RTCScene scene;
   RTCGeometry geometry;
   void * vertex_buffer;
   void * index_buffer;
   int geom_id;
+
+  EmbreeShapeModel(verts_ref_t verts, tris_ref_t faces):
+    BaseShapeModel {verts, faces}
+  {
+    init_embree();
+  }
+
+  ShapeModel(verts_ref_t verts, tris_ref_t faces, verts_ref_t normals):
+    BaseShapeModel {verts, faces, normals}
+  {
+    init_embree();
+  }
+
+  void init_embree() {
+    device = rtcNewDevice(NULL);
+    scene = rtcNewScene(device);
+    geometry = rtcNewGeometry(device, RTC_GEOMETRY_TYPE_TRIANGLE);
+
+    // TODO: is there a way to do this without allocating more memory
+    // for these buffers? It would be nice to be able to just pass
+    // pointers to the memory held by verts and faces.
+
+    vertex_buffer = rtcSetNewGeometryBuffer(
+      geometry,               // geometry
+      RTC_BUFFER_TYPE_VERTEX, // type
+      0,                      // slot
+      RTC_FORMAT_FLOAT3,      // format
+      3*sizeof(coef_t),       // byteStride
+      verts.rows()            // itemCount
+      );
+    if (rtcGetDeviceError(device) != RTC_ERROR_NONE) {
+      throw std::runtime_error("error when creating vertex beffer");
+    }
+    memcpy(vertex_buffer, verts.data(), sizeof(coef_t)*verts.size());
+
+    index_buffer = rtcSetNewGeometryBuffer(
+      geometry,              // geometry
+      RTC_BUFFER_TYPE_INDEX, // type
+      0,                     // slot
+      RTC_FORMAT_UINT3,      // format
+      3*sizeof(index_t),     // byteStride,
+      faces.rows()           // itemCount
+      );
+    if (rtcGetDeviceError(device) != RTC_ERROR_NONE) {
+      throw std::runtime_error("error when creating index beffer");
+    }
+    memcpy(index_buffer, faces.data(), sizeof(index_t)*faces.size());
+
+    rtcCommitGeometry(geometry);
+    rtcAttachGeometry(scene, geometry);
+    rtcReleaseGeometry(geometry);
+    rtcCommitScene(scene);
+  }
+
+  virtual ~EmbreeShapeModel() {
+    rtcReleaseScene(scene);
+    rtcReleaseDevice(device);
+  }
+
+  /**
+   * Shoot rays from the points in `points` in the direction of
+   * `dirs`. Returns a vector of the indices of each element that was
+   * hit.
+   */
+  virtual indices_t intersect(verts_ref_t points, verts_ref_t dirs) {
+    /**
+     * TODO: choose this more carefully based on circumradius or
+     * inradius of triangles
+     */
+    constexpr float tnear = 1e-5;
+
+    size_t i = 0;
+
+    std::vector<RTCRayHit> rayhits(points.rows());
+    for (auto & rayhit: rayhits) {
+      RTCRay & ray = rayhit.ray;
+      ray.org_x = points(i, 0);
+      ray.org_y = points(i, 1);
+      ray.org_z = points(i, 2);
+      ray.tnear = tnear;
+      ray.tfar = std::numeric_limits<coef_t>::infinity();
+      ray.dir_x = dirs(i, 0);
+      ray.dir_y = dirs(i, 1);
+      ray.dir_z = dirs(i, 2);
+      ray.flags = 0;
+      rayhit.hit.geomID = RTC_INVALID_GEOMETRY_ID;
+      ++i;
+    }
+
+    RTCIntersectContext context;
+    rtcIntersect1M(
+      scene,
+      &context,
+      &rayhits[0],
+      rayhits.size(),
+      sizeof(RTCRayHit)
+      );
+
+    i = 0;
+    indices_t inds(points.rows());
+    for (auto const & rayhit: rayhits) {
+      inds[i++] = rayhit.hit.geomID != RTC_INVALID_GEOMETRY_ID ?
+        rayhit.hit.primID :
+        NO_INDEX;
+    }
+
+    return inds;
+  }
 };
+
+struct FastbvhShapeModel: public BaseShapeModel { /* TODO: ... */ };
+
+struct CgalShapeModel: public BaseShapeModel { /* TODO: ... */ };
+
+struct OptixShapeModel: public BaseShapeModel { /* TODO: ... */ };
 
 }

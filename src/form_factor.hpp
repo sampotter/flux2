@@ -1,53 +1,54 @@
 #pragma once
 
 #include "common.hpp"
+#include "shape_model.hpp"
 
-constexpr double EPS = 1e-5;
+namespace Flux {
 
-struct FormFactorBlock
-{
+struct Block {
+	virtual ~Block() {}
+	virtual int depth() const = 0;
+	virtual bool is_leaf() const = 0;
+	virtual vec_t operator()(vec_ref_t rhs) const = 0;
 };
 
-struct FormFactorLeafBlock
-{
+struct OctreeNodeBlock: public Block {
+	std::array<std::unique_ptr<Block>, 8> blocks;
+	std::array<permutation_t, 8> perms;
+
+	int depth() const final {
+		int d = 0;
+		for (auto & block: blocks) {
+			d = std::max(d, block->depth());
+		}
+		return d + 1;
+	}
+
+	bool is_leaf() const final {
+		return false;
+	}
+
+
 };
 
-struct FormFactorNullBlock: public FormFactorLeafBlock
-{
+struct LeafBlock: public Block {
+	int depth() const final {
+		return 0;
+	}
+
+	bool is_leaf() const final {
+		return true;
+	}
 };
 
-struct FormFactorZeroBlock: public FormFactorLeafBlock
-{
-};
+struct EmptyBlock: public LeafBlock {};
 
-struct FormFactorDenseBlock: public FormFactorLeafBlock
-{
-};
+struct ZeroBlock: public LeafBlock {};
 
-struct FormFactorSparseBlock: public FormFactorLeafBlock
-{
-};
+struct DenseBlock: public LeafBlock {};
 
-struct FormFactorCsrBlock: public FormFactorSparseBlock
-{
-};
+struct SparseBlock: public LeafBlock {};
 
-struct FormFactorSvdBlock: public FormFactorLeafBlock
-{
-};
+struct SvdBlock: public LeafBlock {};
 
-struct FormFactor2dTreeBlock: public FormFactorBlock
-{
-};
-
-struct FormFactorQuadtreeBlock: public FormFactor2dTreeBlock
-{
-};
-
-struct FormFactorOctreeBlock: public FormFactor2dTreeBlock
-{
-};
-
-struct FormFactorMatrix
-{
-};
+}
