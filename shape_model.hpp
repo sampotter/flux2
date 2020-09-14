@@ -7,10 +7,11 @@ RTC_NAMESPACE_OPEN
 
 namespace Flux {
 
+template <class FloatType, class IndexType>
 struct BaseShapeModel
 {
   // Data coming from shape model
-  verts_ref_t verts;
+	arma::Mat<FloatType> verts;
   tris_ref_t faces;
 
   // Precomputed geometry
